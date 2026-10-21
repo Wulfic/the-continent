@@ -4,26 +4,25 @@
 > cheap to read at the start of every session. History belongs in `decisions.md` and
 > `gotchas.md`; this file only answers "where am I right now?".
 
-**Last updated:** 2026-10-21 (Stages A-D done; v1.0.0 released)
+**Last updated:** 2026-10-21 (Stage E done: the repo is public)
 **Branch:** `main`, always. This outranks any harness-assigned branch (decisions.md 2026-10-17).
-Only `main` exists on the remote. `mc/1.21.11` (frozen 1.21.11 line, critical fixes only) exists locally from 2026-10-20. The owner works on Windows: `./gradlew build` must stay green there too.
+The owner works on Windows: `./gradlew build` must stay green there too.
 
 ## Where we are
-- **26.x plan in progress** (TODO.md stages A–E; owner answers 2026-10-20: push once per stage, first 26.x
-  release is **1.0.0**, public identity = noreply, credentials **not rotated yet**, so Stage E is blocked on E.1).
-- **Stage A done, pushed, CI green** (run 39488841812 on a5b0961): Fabric on bands 26.1.2 / 26.2 / 26.3 as
-  Stonecutter nodes, 26.3 worldgen port included. Per-band jars `the_continent-<v>+<loader>-mc<label>.jar`.
-- **Stage B done, committed and pushed at session end** (2026-10-20): `neoforge/` and `forge/` branches,
-  `tools/server_smoke.py` + `tools/smoke_band.py`, a CI smoke step for all four loaders per band, Forge
-  `pack.mcmeta`. Locally: all 12 nodes build and test green, and all 12 loader × band smokes pass; the NeoForge
-  mutation check goes red as it should.
+- **Two repos now** (decisions.md 2026-10-21 "A fresh public repo"):
+  - `origin` = `Wulfic/the-continent`, the new repo. Its history starts at the clean root **c2cd2a8** ("The Continent
+    1.0.0"). Public since 2026-10-21, with release v1.0.0 (9 jars, rebuilt by its own CI).
+  - `archive` = `Wulfic/the-continent-archive`: private, archived, read-only. All old history, `mc/1.21.11`, tags and
+    releases v0.1.0 / v0.2.0 / v1.0.0, Actions logs. Also in `../the-continent-archive-2026-10-21.bundle` (verified).
+- Every SHA in `.agent/memory` and TODO.md before 2026-10-21's Stage E entry exists only in the archive.
+- `mc/1.21.11` is local and tracks `archive`. It must never be pushed to `origin`, and the local `pre-push` hook
+  refuses anything that doesn't descend from c2cd2a8. `remote.origin.push` pushes `main` only.
 
 ## Resume here
-1. **v1.0.0 is released (2026-10-21)**, tag on d1c7545: 9 band x loader jars, their sources jars and
-   `SHA256SUMS`, checked after download. Stages A-D of the 26.x plan are done.
-2. **Stage E is next and blocked on E.1:** the owner rotates every credential in `.env`, `.mcp.json` and
-   `.claude/mcp.vscode-reference.json` (asked 2026-10-20: not yet). E.2 (untrack those files) reverses an owner
-   decision, so ask before starting it even then.
+1. **The 26.x plan (stages A-E) is done.** Next work comes from the TODO backlog or the owner. Only secret
+   scanning + push protection are on (owner's pick); there's no ruleset on `main` and no Dependabot.
+2. **Owner, not blocking:** rotate the GitHub PAT, the context7 key and the system passwords that were in `.env`.
+   They're still readable in the private archive.
 3. Running the release scripts' tests locally: Docker, see gotchas 2026-10-21. Before any future tag, download a
    real run's artifacts and run the guard on them (gotchas 2026-10-21, upload-artifact).
 
@@ -36,5 +35,7 @@ Only `main` exists on the remote. `mc/1.21.11` (frozen 1.21.11 line, critical fi
   failures and hangs. A client gametest whose log stops at "Stopping singleplayer server" is hung (gotchas).
 
 ## Do not forget
-- `.env` and both MCP configs are tracked with live credentials (owner's call). Rotate the `ghp_` PAT.
+- `.env`, `.mcp.json` and `.claude/mcp.vscode-reference.json` are untracked and ignored; copy the `.example` files.
+- This repo's local git config sets the noreply identity. The global one is the personal email: never commit or
+  tag in a fresh clone or a scratch repo without setting the identity first.
 - `.claude/skills/` and `.github/skills/` are hand-synced copies — edit both.

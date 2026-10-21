@@ -331,32 +331,53 @@ from the bundle and from `archive`.
 
 - [ ] E.1 **Owner (no longer blocking):** revoke and reissue the GitHub PAT, the context7 key, and the `.env`
       passwords.
-- [ ] E.2 `chore: stop tracking credential files`: `git rm --cached` the three files (the local copies stay), add
+- [x] E.2 `chore: stop tracking credential files`: `git rm --cached` the three files (the local copies stay), add
       them to `.gitignore`, add `.env.example` and `.mcp.example.json` / `.claude/mcp.vscode-reference.example.json`
       with placeholders, and fix the docs that call them tracked (AGENTS.md, copilot-instructions, skills,
       state.md). Record the reversal in decisions.md.
+      Done 2026-10-21 (78fc513). Also: this repo's local git config now sets the noreply identity, because the
+      global one is the personal email (the last pre-Stage-E commits carry it).
 - [x] E.3 Owner decisions (2026-10-20): MIT licence (done) · agent files stay public if E.4 is clean · noreply
       identity `34788214+Wulfic@users.noreply.github.com`.
-- [ ] E.4 Sweep **the tree that will be published**: gitleaks (Docker) on the clean commit, plus grep for
+- [x] E.4 Sweep **the tree that will be published**: gitleaks (Docker) on the clean commit, plus grep for
       emails, personal paths, hostnames and the network name. Read `.agent/memory` for anything private (modpack
       details, gotchas 2026-10-19). Fix what it finds in a commit on `main`.
-- [ ] E.5 Backup: push `mc/1.21.11` to `origin` (still the private repo) so the archive is complete, then
+      Done 2026-10-21: gitleaks clean (positive control: it flags the PAT in the old `1b9209a`, but has no rule
+      for the context7 key or the passwords, so every local secret value was also searched for: 0 hits). Found:
+      LAN IPs/topology in gotchas 2026-08-12 (redacted, ee63ac3). Kept: `wulfnet` MCP tool names, the modpack
+      gotcha (technical only), `Logo/` (C2PA says AI-generated via Azure OpenAI, no personal identity).
+- [x] E.5 Backup: push `mc/1.21.11` to `origin` (still the private repo) so the archive is complete, then
       `git bundle create <scratchpad>/the-continent-full.bundle --all` and `git bundle verify`.
-- [ ] E.6 Build the clean commit in the scratchpad: `git archive HEAD` → new `git init` → one commit as the
+      Done 2026-10-21: pushed, and the verified bundle is `../the-continent-archive-2026-10-21.bundle` beside the
+      repo (sha256 aca3fa80...f889; main ee63ac3, mc/1.21.11 4c7a3fc, tags v0.1.0 / v0.2.0 / v1.0.0).
+- [x] E.6 Build the clean commit in the scratchpad: `git archive HEAD` → new `git init` → one commit as the
       noreply identity. gitleaks on its history must report 0, and `git ls-files` must not list a credential file.
-- [ ] E.7 **Outward, owner confirms each:**
+      Done 2026-10-21 with `git commit-tree HEAD^{tree}` (tree identical to ee63ac3) -> **c2cd2a8**, fetched alone
+      into `<scratchpad>/clean`: 265 objects, all reachable, gitleaks 0, secret values + personal email 0 hits.
+- [x] E.7 **Outward, owner confirms each:**
       1. `gh repo rename the-continent-archive -R Wulfic/the-continent`, then `gh repo archive`.
       2. `gh repo create Wulfic/the-continent --private`, then push the clean `main`.
       3. CI green on the new repo. Tag `v1.0.0`, and check the release's 9 + 9 jars and `SHA256SUMS`.
-      4. Harden: secret scanning with push protection, Dependabot alerts, a ruleset blocking force-push and deletion
+      4. (After 5: rulesets and secret scanning need a public repo on a free plan.) Harden: secret scanning with push protection, Dependabot alerts, a ruleset blocking force-push and deletion
          on `main` (no PR requirement, the owner pushes to `main`). Confirm there's no `pull_request_target` and the
          release job only runs on tags or dispatch.
       5. `gh repo edit --visibility public`.
-- [ ] E.8 Verify logged out (`curl` with no token): the repo and release are visible, the downloads hash to
+      Done 2026-10-21, each step confirmed by the owner: archive renamed + archived (private), new repo created
+      private, c2cd2a8 pushed, CI green (run 39564431915), v1.0.0 tagged with the noreply tagger, and the release
+      run 39567944981 published 9 jars + 9 sources jars + `SHA256SUMS` (all 18 verified, and all 942 jar entries
+      scanned clean). Then public. Hardening, owner's pick: **secret scanning + push protection only**. Not
+      enabled: Dependabot alerts, a ruleset on `main`, fork-PR approval beyond GitHub's default. The workflow was
+      already fine: `pull_request` (not `_target`), `contents: read` by default, release on `v*` tags or dispatch.
+- [x] E.8 Verify logged out (`curl` with no token): the repo and release are visible, the downloads hash to
       `SHA256SUMS`, and a fresh clone has 1 commit and scans clean.
-- [ ] E.9 Re-point local: `git remote rename origin archive`, add the new `origin`, delete the local old tags,
+      Done 2026-10-21: anonymous API says public, the archive is 404, old SHA ee63ac3 is 422 via the new repo,
+      the anonymous downloads match `SHA256SUMS`, and an anonymous clone has 1 commit, 4 refs and no credential
+      file. GitHub secret scanning: 0 alerts.
+- [x] E.9 Re-point local: `git remote rename origin archive`, add the new `origin`, delete the local old tags,
       fetch, `git checkout -B main origin/main` (the trees are identical, so the working copy doesn't change).
       `mc/1.21.11` stays local, tracking `archive`.
+      Done 2026-10-21, plus a local `.git/hooks/pre-push` that refuses pushing to `origin` anything not descending
+      from c2cd2a8 (tested: `mc/1.21.11` and old ee63ac3 refused), and `remote.origin.push` = `main` only.
 
 **Rollback:** before E.7.5 nothing is public: `gh repo delete` the new repo, `gh repo unarchive` and
 `gh repo rename the-continent` the archive. After E.7.5, `gh repo edit --visibility private` hides the repo but

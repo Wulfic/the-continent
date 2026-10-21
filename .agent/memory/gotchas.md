@@ -449,3 +449,25 @@ and uploads that. The check that would have caught it: download a real run's art
 -p 'the_continent-jars-*' -D <dir>` merges them like the release job) and run the guard on that folder.
 **Also:** re-running a tag's run uses the workflow *at the tag*, so a workflow fix needs a new tag commit.
 **Affects:** `.github/workflows/build.yml`
+
+## 2026-10-21 — The global git identity is the personal email
+**Symptom:** The last commits before Stage E (`4b818a2` and earlier, in the archive) carry the owner's personal email,
+although the plan said "public identity = noreply".
+**Cause:** `user.email` comes from the global `~/.gitconfig`, and nothing in the repo overrode it. A scratch repo or
+a fresh clone inherits it too, and so does an annotated tag's tagger.
+**Fix:** this repo's local config sets `user.name Wulfic` / `user.email 34788214+Wulfic@users.noreply.github.com`.
+Anything made outside this working copy (`git init` in the scratchpad, `git commit-tree`, `git tag -a`) needs
+`GIT_AUTHOR_*` / `GIT_COMMITTER_*` set explicitly. Check with `git log --format='%an <%ae> | %cn <%ce>'` before
+pushing.
+**Affects:** `.git/config` (local), any new clone
+
+## 2026-10-21 — gitleaks has no rule for a context7 key or a plain password
+**Symptom:** gitleaks 8.28 over the old history found only the GitHub fine-grained PAT (twice), not the `ctx7sk-`
+key in the same files or the passwords in `.env`.
+**Cause:** its rules match known token formats; a context7 key and `PASSWORD=...` lines match none.
+**Fix:** a clean gitleaks run is necessary, not sufficient. Also search the tree (or every object, via
+`git cat-file --batch-all-objects`) for the actual secret values read from the local files, printing only the
+file or object names.
+**Dead ends:** copying the secret files into the scratchpad for a positive control was blocked by the sandbox, and
+rightly so. Scanning the old history in place (read-only Docker mount) is the control that copies nothing.
+**Affects:** Stage E sweep
