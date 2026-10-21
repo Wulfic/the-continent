@@ -1,0 +1,20 @@
+{
+  "type": "minecraft:cache",
+  "input": {
+    "type": "minecraft:add",
+    "left": "the_continent:overworld/offset_spline",
+    "right": {
+      "type": "the_continent:layout",
+      "channel": "uplift",
+      "detail": {
+        "type": "minecraft:noise",
+        "noise": "the_continent:peaks",
+        "shift_x": "minecraft:shift_x",
+        "shift_z": "minecraft:shift_z",
+        "xz_scale": 1.0,
+        "y_scale": 0.0
+      },
+      "seed_source": "minecraft:overworld/temperature"
+    }
+  }
+}

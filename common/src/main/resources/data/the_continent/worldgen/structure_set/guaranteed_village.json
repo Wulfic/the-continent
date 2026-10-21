@@ -1,0 +1,12 @@
+{
+  "placement": {
+    "type": "the_continent:anchored",
+    "salt": 1450294012
+  },
+  "structures": [
+    {
+      "structure": "minecraft:village_plains",
+      "weight": 1
+    }
+  ]
+}

@@ -1,0 +1,243 @@
+# Builds the mod for every Minecraft band and runs its unit tests and gametests on every push to main and every
+# PR, and uploads the jars to the run. A release publishes every band's jars behind .github/scripts/release-guard.sh,
+# either by pushing a tag vX.Y.Z or by running this workflow by hand on main with a version, which tags main's head
+# first.
+# Action versions were pinned on 2026-10-17 from each action's releases page. Never bump from memory.
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release main as vX.Y.Z: enter X.Y.Z (must equal gradle.properties). Leave empty to only build.'
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  # Manual runs get their own group, so a push to main can't cancel a release part-way.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  # A newer push supersedes an older branch or PR run. Tag and manual runs are never cancelled.
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  # One build leg per Minecraft band. The bands are the band_label.<band> keys in gradle.properties, the same
+  # keys every node's build reads, so a band missing from either place fails loudly instead of going untested.
+  bands:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      bands: ${{ steps.list.outputs.bands }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Lint and test the release scripts
+        run: |
+          shellcheck .github/scripts/*.sh
+          bash .github/scripts/release-guard-test.sh
+
+      - name: List the bands
+        id: list
+        run: |
+          bands=$(sed -n 's/^band_label\.\([0-9.]*\)=.*/\1/p' gradle.properties | jq -R . | jq -sc .)
+          if [ "$(jq length <<< "$bands")" -eq 0 ]; then
+            echo "gradle.properties lists no band_label.<band> keys" >&2
+            exit 1
+          fi
+          echo "bands=$bands" | tee -a "$GITHUB_OUTPUT"
+
+  build:
+    needs: bands
+    name: build (${{ matrix.band }})
+    runs-on: ubuntu-24.04
+    # Three loaders' builds, four server boots and a client: the step timeouts below add up to 95.
+    timeout-minutes: 100
+    strategy:
+      # Every band reports, even after another fails.
+      fail-fast: false
+      matrix:
+        band: ${{ fromJSON(needs.bands.outputs.bands) }}
+    env:
+      BAND: ${{ matrix.band }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      # Minecraft 26.x needs Java 25, for Gradle and for the mod.
+      - uses: actions/setup-java@v6.1.0
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      # A step timeout fails the step, so the report upload below still runs after a hung gametest
+      # server. Hitting the job timeout would cancel the job and skip it.
+      - name: Build, unit tests and gametests
+        id: build
+        timeout-minutes: 35
+        run: ./gradlew ":common:$BAND:build" ":fabric:$BAND:build" ":neoforge:$BAND:build" ":forge:$BAND:build" --stacktrace
+
+      # One flat folder per band. Given several paths, upload-artifact keeps each file's path below their common
+      # ancestor (here the repo root), and the release job needs the jars at the top of dist.
+      - name: Stage the jars
+        id: stage
+        run: |
+          jars=$RUNNER_TEMP/jars-$BAND
+          mkdir -- "$jars"
+          for jar in fabric/versions/"$BAND"/build/libs/*.jar neoforge/versions/"$BAND"/build/libs/*.jar \
+              forge/versions/"$BAND"/build/libs/*.jar; do
+            if [ -e "$jars/${jar##*/}" ]; then
+              echo "::error::two loaders built ${jar##*/}"
+              exit 1
+            fi
+            cp -- "$jar" "$jars/"
+          done
+          ls -l "$jars"
+          echo "dir=$jars" >> "$GITHUB_OUTPUT"
+
+      # Before the tests below, so a red run still leaves the jars to try.
+      - name: Upload the jars
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: the_continent-jars-${{ matrix.band }}
+          path: ${{ steps.stage.outputs.dir }}/*.jar
+          if-no-files-found: error
+
+      # Each shipped jar on its loader's real dedicated server, on a Continent world: Fabric and Quilt on the
+      # band's floor version, NeoForge and Forge on the band. tools/server_smoke.py lists the checks. Every loader
+      # runs even after one fails.
+      - name: Server smoke on every loader
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 40
+        run: |
+          status=0
+          for loader in fabric quilt neoforge forge; do
+            echo "::group::$loader"
+            if ! python3 tools/smoke_band.py --band "$BAND" --loader "$loader" --work "$RUNNER_TEMP/smoke-$loader"; then
+              echo "::error::server smoke failed: $loader on band $BAND"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit "$status"
+
+      # A real singleplayer world on a headless client: the day cycle, and the Nether and End portals.
+      # `check` doesn't run it, because it needs a display. Mesa's software renderer is enough.
+      - name: Client gametests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        timeout-minutes: 20
+        run: |
+          # 26.3's renderer needs either OpenGL with an sRGB-capable framebuffer, which Xvfb's software GL doesn't
+          # offer, or Vulkan that can present to a window: Mesa's software Vulkan (lavapipe) can.
+          sudo apt-get update
+          sudo apt-get install -y xvfb mesa-utils mesa-vulkan-drivers
+          echo "CPUs: $(nproc)"
+          free -m
+          if ! xvfb-run -a glxinfo -B; then
+            echo "glxinfo failed: no OpenGL info for this runner" >&2
+          fi
+          # If the client is still running after 90 s, its thread dumps join the failure upload below.
+          .github/scripts/thread-dumps.sh "fabric/versions/$BAND/build/run/clientGameTest/logs" 90 4 30 &
+          xvfb-run -a -s "-screen 0 1280x720x24" ./gradlew ":fabric:$BAND:runClientGameTest" --stacktrace
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: test-reports-${{ matrix.band }}
+          path: |
+            */versions/${{ matrix.band }}/build/reports/
+            */versions/${{ matrix.band }}/build/test-results/
+            fabric/versions/${{ matrix.band }}/build/run/gameTest/logs/
+            fabric/versions/${{ matrix.band }}/build/run/gameTest/crash-reports/
+            fabric/versions/${{ matrix.band }}/build/run/clientGameTest/logs/
+            fabric/versions/${{ matrix.band }}/build/run/clientGameTest/crash-reports/
+            ${{ runner.temp }}/smoke-*/smoke.log
+            ${{ runner.temp }}/smoke-*/logs/
+            ${{ runner.temp }}/smoke-*/crash-reports/
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release != '')
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # Full history and all branches, so the guard can prove the tag is on origin/main.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Every band's jars into one folder. The guard below proves it holds exactly one jar and one sources jar per
+      # band and loader, and nothing else.
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: the_continent-jars-*
+          merge-multiple: true
+          path: dist
+
+      # A pushed tag names itself. A manual run tags main's head here, locally, so the guard checks it like
+      # any other tag. git refuses a tag name that already exists, and the full fetch above brought every tag.
+      - name: Name the release
+        id: name
+        env:
+          MANUAL_VERSION: ${{ inputs.release }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$GITHUB_REF" != refs/heads/main ]; then
+              echo "Manual releases run on main only, not $GITHUB_REF. Nothing was published." >&2
+              exit 1
+            fi
+            tag=v$MANUAL_VERSION
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              tag -a "$tag" -m "The Continent $MANUAL_VERSION" HEAD
+          else
+            tag=$GITHUB_REF_NAME
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Release guard
+        env:
+          TAG: ${{ steps.name.outputs.tag }}
+        run: bash .github/scripts/release-guard.sh "$TAG" dist "$RUNNER_TEMP/release-notes.md"
+
+      # Only after the guard passed. A tag pushed with this job's token starts no new workflow run.
+      - name: Push the tag (manual release only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.name.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$TAG"
+
+      # The jars are dist/the_continent-*.jar, because the guard refused anything else in dist. No --clobber: gh
+      # refuses a tag that already has a release, so a re-run can't replace a published one. --verify-tag stops gh
+      # from creating a tag that isn't on the remote.
+      - name: Publish the GitHub Release
+        env:
+          TAG: ${{ steps.name.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          version=${TAG#v}
+          cd dist
+          sha256sum the_continent-*.jar > SHA256SUMS
+          cat SHA256SUMS
+          prerelease=()
+          case $version in *-*) prerelease=(--prerelease) ;; esac
+          gh release create "$TAG" "${prerelease[@]}" --verify-tag \
+            --title "The Continent $version" --notes-file "$RUNNER_TEMP/release-notes.md" \
+            the_continent-*.jar SHA256SUMS
+          gh release view "$TAG" --json url,assets --jq '.url, (.assets[] | "\(.name) \(.size)")'

@@ -1,0 +1,9 @@
+{
+  "type": "minecraft:cache",
+  "input": {
+    "type": "the_continent:layout",
+    "channel": "erosion",
+    "detail": "minecraft:overworld/erosion",
+    "seed_source": "minecraft:overworld/temperature"
+  }
+}

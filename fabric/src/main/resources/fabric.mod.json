@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "the_continent",
+	"version": "${version}",
+	"name": "The Continent",
+	"description": "A world type with one fixed, hand-laid continent holding every block-gating overworld biome, surrounded by ocean.",
+	"authors": [
+		"wulfic"
+	],
+	"license": "MIT",
+	"icon": "assets/the_continent/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.wulfic.continent.ContinentMod"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "${minecraftRange}",
+		"java": ">=25",
+		"fabric-api": "*"
+	}
+}

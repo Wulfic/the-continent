@@ -1,0 +1,27 @@
+modLoader = "javafml"
+loaderVersion = "[${forgeMajor},)"
+license = "MIT"
+
+[[mods]]
+modId = "the_continent"
+version = "${version}"
+displayName = "The Continent"
+authors = "wulfic"
+logoFile = "assets/the_continent/icon.png"
+description = '''
+A world type with one fixed, hand-laid continent holding every block-gating overworld biome, surrounded by ocean.
+'''
+
+[[dependencies.the_continent]]
+modId = "forge"
+mandatory = true
+versionRange = "[${forgeVersion},)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.the_continent]]
+modId = "minecraft"
+mandatory = true
+versionRange = "${minecraftRange}"
+ordering = "NONE"
+side = "BOTH"

@@ -1,0 +1,32 @@
+{
+  "// usage": "Copy to .mcp.json (untracked) and set GITHUB_MCP_TOKEN and CONTEXT7_API_KEY in your environment; Claude Code expands ${VAR} and ${VAR:-default} in args. GITHUB_MCP_URL defaults to GitHub's hosted server; point it at a self-hosted github-mcp-server if you run one. mcp-compressor is fetched on demand via uvx (needs `uv` on PATH).",
+
+  "// cli-syntax": "mcp-compressor 0.31.4 requires `--compression` (not --compression-level), `-H` (not --header), and a `--` separator before the backend URL/args. Backends with no real Authorization header also need a placeholder `-H Authorization=Bearer unused`, or mcp-compressor auto-attempts OAuth discovery and fails.",
+
+  "mcpServers": {
+
+    "github": {
+      "command": "uvx",
+      "args": [
+        "mcp-compressor",
+        "--server-name", "github",
+        "--compression", "high",
+        "--",
+        "${GITHUB_MCP_URL:-https://api.githubcopilot.com/mcp/}",
+        "-H", "Authorization=Bearer ${GITHUB_MCP_TOKEN}"
+      ]
+    },
+
+    "context7": {
+      "command": "uvx",
+      "args": [
+        "mcp-compressor",
+        "--server-name", "context7",
+        "--compression", "high",
+        "--",
+        "https://mcp.context7.com/mcp",
+        "-H", "Authorization=Bearer ${CONTEXT7_API_KEY}"
+      ]
+    }
+  }
+}
